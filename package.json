@@ -1,8 +1,8 @@
 {
-  "name": "meseeks-mcp-server",
+  "name": "meeseeks-mcp-server",
   "version": "0.1.0",
   "private": true,
-  "description": "A recursive Meseeks MCP server with configurable recursion limit",
+  "description": "A recursive Meeseeks MCP server with configurable recursion limit",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
@@ -13,7 +13,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^0.5.0"
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "openai": "^4.56.0"
   },
   "devDependencies": {
     "@types/node": "^22.7.4",

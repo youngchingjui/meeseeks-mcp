@@ -1,6 +1,6 @@
-# Meseeks MCP Server
+# Meeseeks MCP Server
 
-A simple recursive Meseeks MCP server implemented in TypeScript/Node.js using the Model Context Protocol (MCP) SDK. It exposes a single tool that attempts to solve a task by recursively delegating to additional "Meseeks" until the task is solved or a recursion limit is reached.
+A simple recursive Meeseeks MCP server implemented in TypeScript/Node.js using the Model Context Protocol (MCP) SDK. It exposes a single tool that attempts to solve a task by recursively delegating to additional "Meeseeks" until the task is solved or a recursion limit is reached.
 
 - Default max recursion depth: 10 (hard-capped at 10)
 - User-configurable `maxRecursions` input
@@ -10,7 +10,7 @@ A simple recursive Meseeks MCP server implemented in TypeScript/Node.js using th
 ## Getting started
 
 Prerequisites:
-- Node.js 18+
+- Node.js 22+
 
 Install dependencies:
 
@@ -28,7 +28,30 @@ During development:
 
 - `npm run dev`
 
-## MCP tool: `meseeks.solve`
+### Configure OpenAI API key
+
+This server uses OpenAI to run the Mr. Meeseeks agent. Provide your API key via environment variable so your MCP client can launch the server with access to it.
+
+- Set environment variable `OPENAI_API_KEY` before starting the server, or configure it in your MCP client’s server configuration.
+
+Example (shell):
+
+- macOS/Linux: `export OPENAI_API_KEY=sk-...`
+- Windows (PowerShell): `$env:OPENAI_API_KEY = "sk-..."`
+
+### Subscribing from an MCP client
+
+Add an entry for this server to your MCP-aware client (for example, an editor or agent runner) using stdio transport. Provide the command and ensure the environment includes `OPENAI_API_KEY`.
+
+Example conceptual client config:
+
+- command: `node`
+- args: `["dist/index.js"]`
+- env: `{ "OPENAI_API_KEY": "<your key>" }`
+
+Refer to your MCP client’s documentation for the exact configuration format.
+
+## MCP tool: `meeseeks.solve`
 
 Input schema:
 - `task` (string, required): The task to solve.
@@ -45,7 +68,7 @@ Output:
 
 ## Example usage (conceptual)
 
-From an MCP-aware client, call the `meseeks.solve` tool with inputs like:
+From an MCP-aware client, call the `meeseeks.solve` tool with inputs like:
 
 ```
 {
@@ -67,5 +90,5 @@ Demo/testing example: Force solve at depth 3
 ## Notes
 
 - This server uses the stdio transport. Many MCP clients (e.g., editors) connect to servers via stdio.
-- The recursion logic here simulates the behavior—replace `attemptSolve` with real task-solving logic or downstream MCP calls if desired.
+- The agent is implemented with OpenAI and speaks like Mr. Meeseeks. Recursion depth and attempt counters are enforced in code, not by the model.
 

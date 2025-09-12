@@ -1,8 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio";
+import OpenAI from "openai";
+import { meeseeksTools } from "./tools.js";
+import { runMeeseeksAttempt } from "./agent.js";
 
 /**
- * A recursive Meseeks MCP server. It exposes a single tool: `meseeks.solve`.
+ * A recursive Meeseeks MCP server. It exposes a single tool: `meeseeks.solve`.
  *
  * Inputs:
  * - task: string (required) – The task to solve.
@@ -10,7 +13,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio";
  * - solveAtDepth: number (optional) – For testing/demo: force success once depth >= solveAtDepth.
  *
  * Behavior:
- * - The tool attempts to "solve" the task. If it cannot (simulated), it recursively calls itself
+ * - The tool attempts to solve the task using OpenAI (Mr. Meeseeks persona). If it cannot (simulated), it recursively calls itself
  *   until it succeeds or reaches the recursion limit.
  * - Returns a trace of the recursion and the final result.
  */
@@ -32,13 +35,36 @@ interface SolveResult {
 }
 
 async function attemptSolve(
+  openai: OpenAI,
   task: string,
   depth: number,
   maxRecursions: number,
   solveAtDepth?: number,
   trace: string[] = []
 ): Promise<SolveResult> {
-  const currentTrace = [...trace, `Depth ${depth}: attempting to solve -> ${task}`];
+  const remaining = Math.max(0, maxRecursions - depth);
+
+  // Let Mr. Meeseeks have a go using the LLM
+  const attemptInfo = await runMeeseeksAttempt({
+    openai,
+    task,
+    attempt: depth + 1,
+    depth,
+    remainingDepth: remaining,
+    tools: meeseeksTools,
+  });
+
+  const preface = `Depth ${depth}: Mr. Meeseeks attempts -> ${task}`;
+  const attemptSummary = attemptInfo.content?.trim() ? attemptInfo.content.trim() : "(no content)";
+  const toolNote = attemptInfo.toolCallRequested
+    ? `Model requested tool '${attemptInfo.toolCallName ?? "unknown"}' (host enforces recursion).`
+    : undefined;
+  const currentTrace = [
+    ...trace,
+    preface,
+    attemptSummary,
+    ...(toolNote ? [toolNote] : []),
+  ];
 
   // Base cases
   if (depth >= maxRecursions) {
@@ -46,7 +72,7 @@ async function attemptSolve(
       success: true,
       depth,
       maxRecursions,
-      message: `Solved '${task}' at depth ${depth} (reached recursion limit).`,
+      message: `Solved '${task}' at depth ${depth} (reached recursion limit). I'm Mr. Meeseeks, look at me!`,
       trace: currentTrace,
     };
   }
@@ -56,25 +82,25 @@ async function attemptSolve(
       success: true,
       depth,
       maxRecursions,
-      message: `Solved '${task}' at depth ${depth} (solveAtDepth reached).`,
+      message: `Solved '${task}' at depth ${depth} (solveAtDepth reached). Ooooh yeah!`,
       trace: currentTrace,
     };
   }
 
-  // Simulate a failure at this depth; recurse
-  const reason = `Could not solve at depth ${depth}; refining and delegating to next Meseeks.`;
+  // Simulate a failure at this depth; recurse with controlled counters
+  const reason = `Could not fully solve at depth ${depth}; calling another Mr. Meeseeks (recursion managed by host).`;
   const newTrace = [...currentTrace, reason];
-  return attemptSolve(task, depth + 1, maxRecursions, solveAtDepth, newTrace);
+  return attemptSolve(openai, task, depth + 1, maxRecursions, solveAtDepth, newTrace);
 }
 
 async function main() {
-  const server = new McpServer({ name: "meseeks-mcp", version: "0.1.0" });
+  const server = new McpServer({ name: "meeseeks-mcp", version: "0.1.0" });
 
   server.tool(
-    "meseeks.solve",
+    "meeseeks.solve",
     {
       description:
-        "Solve a task using recursive Meseeks delegation. Limits recursion to 10 by default (and hard-cap).",
+        "Solve a task using recursive Mr. Meeseeks delegation. Limits recursion to 10 by default (and hard-cap). Uses OpenAI.",
       inputSchema: {
         type: "object",
         properties: {
@@ -95,10 +121,19 @@ async function main() {
       },
     },
     async (args: SolveArgs) => {
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) {
+        throw new Error(
+          "OPENAI_API_KEY is not set. Provide it via your MCP client's server configuration or environment."
+        );
+      }
+      const openai = new OpenAI({ apiKey });
+
       const userMax = Math.floor(args.maxRecursions ?? 10);
       const maxRecursions = Math.max(0, Math.min(HARD_CAP, userMax));
 
       const result = await attemptSolve(
+        openai,
         args.task,
         0,
         maxRecursions,
@@ -123,7 +158,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("Meseeks MCP server failed to start:", err);
+  console.error("Meeseeks MCP server failed to start:", err);
   process.exit(1);
 });
 
