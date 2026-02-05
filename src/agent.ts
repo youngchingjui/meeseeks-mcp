@@ -24,7 +24,7 @@ export async function runMeeseeksAttempt({
   depth,
   remainingDepth,
   tools = [],
-  model = "gpt-4o-mini",
+  model = "openai/gpt-4o-mini",
 }: MeeseeksAttemptParams): Promise<{ content: string; toolCallRequested: boolean; toolCallName?: string; toolCallArgs?: any }> {
   const userContent = [
     `Task: ${task}`,
