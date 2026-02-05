@@ -11,9 +11,10 @@ import { runMeeseeksAttempt } from "./agent.js";
  * - task: string (required) – The task to solve.
  * - maxRecursions: number (optional) – Maximum recursion depth to attempt. Default 10. Hard-capped at 10.
  * - solveAtDepth: number (optional) – For testing/demo: force success once depth >= solveAtDepth.
+ * - model: string (optional) – LLM model id. When using the Vercel AI Gateway, prefer provider-qualified ids like "openai/gpt-4o-mini".
  *
  * Behavior:
- * - The tool attempts to solve the task using OpenAI (Mr. Meeseeks persona). If it cannot (simulated), it recursively calls itself
+ * - The tool attempts to solve the task using an LLM (Mr. Meeseeks persona). If it cannot (simulated), it recursively calls itself
  *   until it succeeds or reaches the recursion limit.
  * - Returns a trace of the recursion and the final result.
  */
@@ -24,6 +25,7 @@ interface SolveArgs {
   task: string;
   maxRecursions?: number;
   solveAtDepth?: number; // demo/testing helper
+  model?: string; // optional model override
 }
 
 interface SolveResult {
@@ -39,6 +41,7 @@ async function attemptSolve(
   task: string,
   depth: number,
   maxRecursions: number,
+  model: string,
   solveAtDepth?: number,
   trace: string[] = []
 ): Promise<SolveResult> {
@@ -52,6 +55,7 @@ async function attemptSolve(
     depth,
     remainingDepth: remaining,
     tools: meeseeksTools,
+    model,
   });
 
   const preface = `Depth ${depth}: Mr. Meeseeks attempts -> ${task}`;
@@ -90,17 +94,41 @@ async function attemptSolve(
   // Simulate a failure at this depth; recurse with controlled counters
   const reason = `Could not fully solve at depth ${depth}; calling another Mr. Meeseeks (recursion managed by host).`;
   const newTrace = [...currentTrace, reason];
-  return attemptSolve(openai, task, depth + 1, maxRecursions, solveAtDepth, newTrace);
+  return attemptSolve(openai, task, depth + 1, maxRecursions, model, solveAtDepth, newTrace);
+}
+
+function createOpenAIClient() {
+  const gatewayKey = process.env.AI_GATEWAY_API_KEY;
+  const gatewayUrl = process.env.AI_GATEWAY_URL || "https://ai-gateway.vercel.sh/v1";
+  const openaiKey = process.env.OPENAI_API_KEY;
+
+  if (gatewayKey) {
+    return {
+      client: new OpenAI({ apiKey: gatewayKey, baseURL: gatewayUrl }),
+      usingGateway: true,
+    } as const;
+  }
+
+  if (openaiKey) {
+    return {
+      client: new OpenAI({ apiKey: openaiKey }),
+      usingGateway: false,
+    } as const;
+  }
+
+  throw new Error(
+    "No API key configured. Set AI_GATEWAY_API_KEY to use the Vercel AI Gateway (recommended), or OPENAI_API_KEY to talk to OpenAI directly."
+  );
 }
 
 async function main() {
-  const server = new McpServer({ name: "meeseeks-mcp", version: "0.1.0" });
+  const server = new McpServer({ name: "meeseeks-mcp", version: "0.2.0" });
 
   server.tool(
     "meeseeks.solve",
     {
       description:
-        "Solve a task using recursive Mr. Meeseeks delegation. Limits recursion to 10 by default (and hard-cap). Uses OpenAI.",
+        "Solve a task using recursive Mr. Meeseeks delegation. Limits recursion to 10 by default (and hard-cap). Uses an LLM via the Vercel AI Gateway or OpenAI directly.",
       inputSchema: {
         type: "object",
         properties: {
@@ -116,27 +144,31 @@ async function main() {
             minimum: 0,
             description: "Demo/testing helper to force a success once depth >= this value.",
           },
+          model: {
+            type: "string",
+            description:
+              "LLM model id. If using Vercel AI Gateway, prefer provider-qualified ids like 'openai/gpt-4o-mini' or 'anthropic/claude-3-5-sonnet'. Defaults based on gateway presence.",
+          },
         },
         required: ["task"],
       },
     },
     async (args: SolveArgs) => {
-      const apiKey = process.env.OPENAI_API_KEY;
-      if (!apiKey) {
-        throw new Error(
-          "OPENAI_API_KEY is not set. Provide it via your MCP client's server configuration or environment."
-        );
-      }
-      const openai = new OpenAI({ apiKey });
+      const { client: openai, usingGateway } = createOpenAIClient();
 
       const userMax = Math.floor(args.maxRecursions ?? 10);
       const maxRecursions = Math.max(0, Math.min(HARD_CAP, userMax));
+
+      const envModel = process.env.MEESEEKS_MODEL;
+      const defaultModel = usingGateway ? "openai/gpt-4o-mini" : "gpt-4o-mini";
+      const model = (args.model || envModel || defaultModel).trim();
 
       const result = await attemptSolve(
         openai,
         args.task,
         0,
         maxRecursions,
+        model,
         typeof args.solveAtDepth === "number" ? Math.max(0, Math.floor(args.solveAtDepth)) : undefined
       );
 
